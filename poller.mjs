@@ -31,6 +31,19 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
   pollLogger.info({ count: issues.length }, `Found ${issues.length} actionable issue(s)`);
 
   for (const issue of issues) {
+    // Skip issues already claimed by another worker
+    try {
+      const info = execSync(`gh issue view ${issue.number} --repo ${repo} --json labels,assignees`, { encoding: "utf8" });
+      const parsed = JSON.parse(info || "{}");
+      const labels = (parsed.labels || []).map((l) => l.name);
+      if (labels.includes("cline-in-progress")) {
+        pollLogger.info({ issueNumber: issue.number }, "Issue already in progress; skipping");
+        continue;
+      }
+    } catch (e) {
+      pollLogger.warn({ err: e, issueNumber: issue.number }, "could not check claim status; proceeding");
+    }
+
     // 1. Create a dedicated workspace directory for this issue
     const workspaceDir = path.resolve(process.cwd(), `.workspaces`, `issue-${issue.number}`);
     

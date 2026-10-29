@@ -1,7 +1,7 @@
 import { ClineCore } from "@cline/core";
 import { logger } from "./logger.mjs";
 
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 8;
 const RETRY_DELAY_MS = 5_000;
 
 function isSocketError(err) {

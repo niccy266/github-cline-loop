@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.mjs",
+  "scripts": {
+    "test": "node --test tests/",
+    "lint": "node --check index.mjs && node --check agent.mjs && node --check poller.mjs && node --check logger.mjs"
+  },
   "dependencies": {
     "@cline/core": "^0.2.0",
     "pino": "^9.0.0",

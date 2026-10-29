@@ -64,7 +64,14 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
         stdio: "ignore",
       });
 
-      const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
+      // Claim issue to avoid parallel workers
+     try {
+       execSync(`gh issue edit ${issue.number} --repo ${repo} --add-label "cline-in-progress"`, { stdio: "ignore" });
+     } catch (e) {
+       pollLogger.warn({ err: e, issueNumber: issue.number }, "could not add in-progress label");
+     }
+
+     const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
 
       // 3. Pass the isolated workspaceDir as workspacePath to the task runner
       const result = await runTask(cline, {
@@ -97,6 +104,8 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
         `Failed to process Issue #${issue.number}`
       );
     } finally {
+      // Release in-progress claim
+      try { execSync(`gh issue edit ${issue.number} --repo ${repo} --remove-label "cline-in-progress"`, { stdio: "ignore" }); } catch (e) {}
       // Keep workspace persistent across restarts for incremental fixes
       pollLogger.info({ workspaceDir }, "Keeping workspace persistent");
     }

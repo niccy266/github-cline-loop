@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.workspaces
+.cline
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+Dockerfile*
+docker-compose*.yml

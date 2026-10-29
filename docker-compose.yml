@@ -1,0 +1,17 @@
+services:
+  cline-loop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cline-autonomous-loop
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ${USERPROFILE}/.cline-docker:/home/app/.cline
+      - workspaces:/app/.workspaces
+
+volumes:
+  workspaces:
+
+

@@ -40,13 +40,26 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
     );
 
     try {
-      // 2. Clone fresh repo or clean existing directory
+      // 2. Reuse existing workspace if present; otherwise clone fresh
+     if (!fs.existsSync(workspaceDir)) {
+       fs.mkdirSync(workspaceDir, { recursive: true });
+       execSync(`git clone https://${process.env.GH_TOKEN}@github.com/${repo}.git .`, {
+         cwd: workspaceDir,
+         stdio: "ignore",
+       });
+     } else {
+       try {
+         execSync(`git -C "${workspaceDir}" fetch origin`, { stdio: "ignore" });
+       } catch (e) {
+         pollLogger.warn({ err: e, workspaceDir }, "fetch failed; continuing with existing state");
+       }
+     }
       if (fs.existsSync(workspaceDir)) {
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
+        execSync(`rm -rf "${workspaceDir}"`);
       }
       fs.mkdirSync(workspaceDir, { recursive: true });
 
-      execSync(`git clone https://github.com/${repo}.git .`, {
+      execSync(`git clone https://${process.env.GH_TOKEN}@github.com/${repo}.git .`, {
         cwd: workspaceDir,
         stdio: "ignore",
       });
@@ -54,30 +67,38 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
       const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
 
       // 3. Pass the isolated workspaceDir as workspacePath to the task runner
-      await runTask(cline, {
+      const result = await runTask(cline, {
         prompt: taskPrompt,
         issueNumber: issue.number,
         repo,
         workspaceDir,
       });
 
-      // 4. Remove label once completed
-      execSync(`gh issue edit ${issue.number} --repo ${repo} --remove-label "${label}"`);
-      pollLogger.info(
-        { issueNumber: issue.number },
-        `Successfully removed '${label}' label`
-      );
+      const resultText = (result?.text || "").toString();
+      const failed =
+        !resultText ||
+        /unauthorized|error|failed/i.test(resultText);
+
+      if (failed) {
+        pollLogger.warn(
+          { issueNumber: issue.number, result: resultText },
+          "Agent did not report success; keeping label"
+        );
+      } else {
+        execSync(`gh issue edit ${issue.number} --repo ${repo} --remove-label "${label}"`);
+        pollLogger.info(
+          { issueNumber: issue.number },
+          `Successfully removed '${label}' label`
+        );
+      }
     } catch (err) {
       pollLogger.error(
         { err, issueNumber: issue.number },
         `Failed to process Issue #${issue.number}`
       );
     } finally {
-      // 5. Clean up isolated workspace
-      if (fs.existsSync(workspaceDir)) {
-        fs.rmSync(workspaceDir, { recursive: true, force: true });
-        pollLogger.info({ workspaceDir }, "Cleaned up isolated workspace directory");
-      }
+      // Keep workspace persistent across restarts for incremental fixes
+      pollLogger.info({ workspaceDir }, "Keeping workspace persistent");
     }
   }
 }

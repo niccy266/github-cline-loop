@@ -77,17 +77,32 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
         stdio: "ignore",
       });
 
-      // Ensure the claim label exists, then claim the issue to avoid parallel workers
+     // Claim via assignment: assign to self, wait 20s, verify sole assignee
+     let me = null;
+     try { me = execSync("gh api user --jq .login", { encoding: "utf8" }).trim(); } catch (e) { me = null; }
      try {
-       execSync(`gh label create "cline-in-progress" --repo ${repo} --color "FBCA04" --description "Claimed by cline loop"`, { stdio: "ignore" });
-     } catch (e) { /* label may already exist */ }
-     try {
-       execSync(`gh issue edit ${issue.number} --repo ${repo} --add-label "cline-in-progress"`, { stdio: "ignore" });
+       execSync(`gh issue edit ${issue.number} --repo ${repo} --add-assignee @me`, { stdio: "ignore" });
      } catch (e) {
-       pollLogger.warn({ err: e, issueNumber: issue.number }, "could not add in-progress label");
+       pollLogger.warn({ err: e, issueNumber: issue.number }, "could not assign issue");
      }
+     await new Promise((r) => setTimeout(r, 20000));
+     let claimed = false;
+     try {
+       const info = execSync(`gh issue view ${issue.number} --repo ${repo} --json assignees`, { encoding: "utf8" });
+       const parsed = JSON.parse(info || "{}");
+       const assignees = (parsed.assignees || []).map((a) => a.login);
+       if (assignees.length === 1 && (!me || assignees[0] === me)) {
+         claimed = true;
+       } else {
+         pollLogger.info({ issueNumber: issue.number, assignees }, "Issue not solely assigned to us; skipping");
+       }
+     } catch (e) {
+       pollLogger.warn({ err: e, issueNumber: issue.number }, "could not verify assignment; proceeding");
+       claimed = true;
+     }
+     if (!claimed) continue;
 
-     const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
+const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
 
       // 3. Pass the isolated workspaceDir as workspacePath to the task runner
       const result = await runTask(cline, {

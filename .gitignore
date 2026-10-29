@@ -1,5 +1,48 @@
-﻿node_modules/
+﻿# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+# Cline Core & Workspace Isolation
 .workspaces/
 .cline/
-*.log
+sessions/
+*.session.json
+
+# Environment & Secrets
 .env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Operating System & IDE Artifacts
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.stackdump
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Visual Studio Code & Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# Temporary Files
+tmp/
+temp/

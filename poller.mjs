@@ -64,7 +64,10 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
         stdio: "ignore",
       });
 
-      // Claim issue to avoid parallel workers
+      // Ensure the claim label exists, then claim the issue to avoid parallel workers
+     try {
+       execSync(`gh label create "cline-in-progress" --repo ${repo} --color "FBCA04" --description "Claimed by cline loop"`, { stdio: "ignore" });
+     } catch (e) { /* label may already exist */ }
      try {
        execSync(`gh issue edit ${issue.number} --repo ${repo} --add-label "cline-in-progress"`, { stdio: "ignore" });
      } catch (e) {

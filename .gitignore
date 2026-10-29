@@ -46,3 +46,4 @@ $RECYCLE.BIN/
 # Temporary Files
 tmp/
 temp/
+node_modules

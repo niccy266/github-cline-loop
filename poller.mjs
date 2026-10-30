@@ -2,11 +2,13 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "./logger.mjs";
-import { runTask } from "./agent.mjs";
+import { runTask, createAgent } from "./agent.mjs";
 
-export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
+export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agentFactory = createAgent) {
   const pollLogger = logger.child({ repo, label });
   pollLogger.info("Polling GitHub for open issues...");
+
+  let currentCline = cline;
 
   let issues = [];
   try {
@@ -17,7 +19,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
     issues = JSON.parse(rawIssues || "[]");
   } catch (err) {
     pollLogger.error({ err }, "Failed to fetch issues via GitHub CLI");
-    return;
+    return currentCline;
   }
 
   if (issues.length === 0) {
@@ -25,7 +27,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
     pollLogger.info(
       `No pending issues found. Sleeping for ${sleepSeconds}s before next polling cycle (label: '${label}').`
     );
-    return;
+    return currentCline;
   }
 
   pollLogger.info({ count: issues.length }, `Found ${issues.length} actionable issue(s)`);
@@ -95,14 +97,24 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
       const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
 
       // 4. Pass the isolated workspaceDir to the task runner
-      const result = await runTask(cline, {
-        prompt: taskPrompt,
-        issueNumber: issue.number,
-        repo,
-        workspaceDir,
-      });
+      const { result: taskResult, agent: newAgent } = await runTask(
+        currentCline,
+        {
+          prompt: taskPrompt,
+          issueNumber: issue.number,
+          repo,
+          workspaceDir,
+        },
+        agentFactory
+      );
 
-      const resultText = (result?.text || "").toString();
+      // If runTask disposed and recreated the agent, adopt the new instance
+      // so subsequent issues in this tick and future ticks use it.
+      if (newAgent && newAgent !== currentCline) {
+        currentCline = newAgent;
+      }
+
+      const resultText = (taskResult?.text || "").toString();
       const failed =
         !resultText ||
         /unauthorized|error|failed/i.test(resultText);
@@ -122,4 +134,6 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs) {
       pollLogger.info({ workspaceDir }, "Keeping workspace persistent");
     }
   }
+
+  return currentCline;
 }

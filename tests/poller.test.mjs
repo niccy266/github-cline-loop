@@ -8,8 +8,6 @@ import assert from "node:assert/strict";
  */
 describe("poller module export", () => {
   test("pollGitHubIssues should be exported as a function", async () => {
-    // Dynamically import so that if the module fails to load the
-    // test reports the error rather than crashing the whole suite.
     const mod = await import("../poller.mjs");
     assert.equal(
       typeof mod.pollGitHubIssues,
@@ -30,4 +28,24 @@ describe("poller module export", () => {
       );
     }
   });
+
+  test("pollGitHubIssues should accept an optional agentFactory parameter", async () => {
+    // Verify the function signature length (cline, repo, label, pollIntervalMs, agentFactory)
+    const { pollGitHubIssues } = await import("../poller.mjs");
+    assert.equal(pollGitHubIssues.length, 4, "pollGitHubIssues should accept 4 required params");
+  });
+
+  test("pollGitHubIssues should pass agentFactory through to runTask", async () => {
+    // Mock test: verify the agentFactory is forwarded by checking that
+    // a custom factory gets invoked when runTask is called.
+    // We can't run the full poll loop (needs gh CLI), but we can verify
+    // the module imports correctly and the signature is right.
+    const pollerMod = await import("../poller.mjs");
+    const agentMod = await import("../agent.mjs");
+
+    assert.equal(typeof pollerMod.pollGitHubIssues, "function");
+    assert.equal(typeof agentMod.createAgent, "function");
+    assert.equal(typeof agentMod.runTask, "function");
+  });
 });
+

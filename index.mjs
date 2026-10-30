@@ -9,11 +9,15 @@ const POLL_INTERVAL_MS = 60_000;
 async function main() {
   logger.info("Starting Autonomous GitHub Loop Service...");
 
-  const cline = await createAgent();
+  let cline = await createAgent();
 
   const tick = async () => {
     try {
-      await pollGitHubIssues(cline, REPO, TARGET_LABEL, POLL_INTERVAL_MS);
+      const updatedCline = await pollGitHubIssues(cline, REPO, TARGET_LABEL, POLL_INTERVAL_MS);
+      // Adopt a recreated agent instance if runTask disposed and rebuilt it
+      if (updatedCline && updatedCline !== cline) {
+        cline = updatedCline;
+      }
     } catch (err) {
       logger.error({ err }, "Unhandled error during polling tick");
     }

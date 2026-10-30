@@ -1,38 +1,99 @@
 import { ClineCore } from "@cline/core";
 import { logger } from "./logger.mjs";
 
-const MAX_ATTEMPTS = 8;
-const RETRY_DELAY_MS = 5_000;
+export const MAX_ATTEMPTS = 8;
+export const RETRY_DELAY_MS = 5_000;
 
-function isSocketError(err) {
+/**
+ * Number of consecutive socket-error retries after which we dispose the
+ * existing ClineCore instance and create a brand-new one. The local runtime
+ * host's transport can be left in a broken state after a disconnect, so
+ * retrying `start()` on the same instance will just fail again.
+ */
+const RECREATE_AFTER_ATTEMPT = 3;
+
+/**
+ * Detects whether an error is caused by a transport/session-level socket
+ * failure (as opposed to a business-logic or API error).
+ */
+export function isSocketError(err) {
   const msg = (err?.message || String(err || "")).toLowerCase();
   return (
     msg.includes("und_err_socket") ||
     msg.includes("socketerror") ||
     msg.includes("other side closed") ||
-    msg.includes("terminated")
+    msg.includes("terminated") ||
+    msg.includes("socket hang up")
   );
 }
 
+/**
+ * Safely dispose a ClineCore instance so all underlying transports and
+ * resources are released before we create a replacement.
+ */
+export async function disposeAgent(cline) {
+  if (!cline || typeof cline.dispose !== "function") {
+    return;
+  }
+  try {
+    await cline.dispose("recreating agent after disconnect");
+    logger.info("Previous ClineCore instance disposed");
+  } catch (err) {
+    logger.warn({ err }, "Error while disposing ClineCore instance; continuing");
+  }
+}
+
+/**
+ * Creates a new ClineCore instance configured for local backend execution.
+ */
 export async function createAgent() {
   logger.info("Initializing ClineCore engine...");
   const cline = await ClineCore.create({ backendMode: "local" });
   return cline;
 }
 
-export async function runTask(cline, { prompt, issueNumber, repo, workspaceDir }) {
+/**
+ * Runs a single agent task for a GitHub issue, with robust retry and
+ * agent-recreation logic for socket disconnects.
+ *
+ * Returns `{ result, agent }` so the caller can update its reference to
+ * the ClineCore instance in case it was disposed and recreated during
+ * retries.
+ */
+export async function runTask(
+  cline,
+  { prompt, issueNumber, repo, workspaceDir },
+  agentFactory = createAgent
+) {
   const taskLogger = logger.child({ issueNumber, repo, workspaceDir });
   taskLogger.info("Spawning agent task in isolated workspace...");
 
   let lastErr = null;
+  let currentCline = cline;
+
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       if (attempt > 1) {
-        taskLogger.warn({ attempt }, "Retrying agent task after socket error");
+        taskLogger.warn(
+          { attempt },
+          "Retrying agent task after socket error"
+        );
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
       }
 
-      const run = await cline.start({
+      // When socket errors persist across multiple retries, the underlying
+      // ClineCore transport is likely dead. Dispose it and spin up a fresh
+      // instance rather than hammering the same broken host.
+      if (attempt >= RECREATE_AFTER_ATTEMPT && isSocketError(lastErr)) {
+        taskLogger.warn(
+          { attempt },
+          "Transport appears dead; disposing and recreating ClineCore instance"
+        );
+        await disposeAgent(currentCline);
+        currentCline = await agentFactory();
+      }
+
+      const run = await currentCline.start({
         config: {
           providerId: "cline",
           modelId: "reflection/beam-free",
@@ -66,12 +127,12 @@ export async function runTask(cline, { prompt, issueNumber, repo, workspaceDir }
       });
 
       const resultText = (run.result?.text || "").toString();
-      if (/UND_ERR_SOCKET|SocketError|other side closed|terminated/i.test(resultText)) {
+      if (/UND_ERR_SOCKET|SocketError|other side closed|terminated|socket hang up/i.test(resultText)) {
         throw new Error(resultText);
       }
 
       taskLogger.info({ result: resultText }, "Task completed");
-      return run.result;
+      return { result: run.result, agent: currentCline };
     } catch (err) {
       lastErr = err;
       taskLogger.error({ err, attempt }, "Agent task attempt failed");

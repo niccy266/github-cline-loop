@@ -58,7 +58,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       const parsed = JSON.parse(info || "{}");
       const assignees = (parsed.assignees || []).map((a) => a.login);
       if (assignees.length > 0) {
-        pollLogger.info({ issueNumber: issue.number, assignees }, "Issue already assigned; skipping");
+        contextLogger.info("Issue already assigned; skipping");
         alreadyClaimed = true;
       }
     } catch (e) {
@@ -104,7 +104,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
         if (assignees.length === 1 && (!me || assignees[0] === me)) {
           claimed = true;
         } else {
-          pollLogger.info({ issueNumber: issue.number, assignees }, "Issue not solely assigned to us; skipping");
+          contextLogger.info("Issue not solely assigned to us; skipping");
         }
       } catch (e) {
         pollLogger.warn({ err: e, issueNumber: issue.number }, "could not verify assignment; proceeding");

@@ -127,19 +127,35 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       // Print the initial context block once per issue — this is the
       // data stub the agent sees at the start of its work. It is not
       // repeated on every heartbeat log line.
-      pollLogger.info(`Initialising workspace for Issue #${issue.number}`);
-      pollLogger.info(`Workspace created at ${workspaceDir}`);
-      pollLogger.info(`Starting agent for Issue #${issue.number}`);
-      pollLogger.info(
-        { issueNumber: issue.number, title: issue.title, repo, workspaceDir },
+      // Print the data stub once — this is the context the agent sees
+      // at the start of its work. It is printed only once, not repeated.
+      logger.info(
+        {
+          repo,
+          label,
+          issueNumber: issue.number,
+          title: issue.title,
+          workspaceDir,
+        },
+        "Data stub for Issue #" + issue.number
+      );
+
+      // Use a separate logger without repo/label in context for subsequent
+      // log lines so pino-pretty doesn't print them on every line.
+      const contextLogger = pollLogger.child({}).clear();
+      contextLogger.info(`Initialising workspace for Issue #${issue.number}`);
+      contextLogger.info(`Workspace created at ${workspaceDir}`);
+      contextLogger.info(`Starting agent for Issue #${issue.number}`);
+      contextLogger.info(
+        { issueNumber: issue.number, title: issue.title, workspaceDir },
         `Issue #${issue.number}: ${issue.title}`
       );
-      pollLogger.info(`Description: ${issue.body}`);
-      pollLogger.info(`Comment count: ${comments.length}`);
+      contextLogger.info(`Description: ${issue.body}`);
+      contextLogger.info(`Comment count: ${comments.length}`);
       comments.forEach((c, i) => {
         const author = c.author ? c.author.login : "unknown";
         const body = c.body || "";
-        pollLogger.info(`  [${i + 1}] ${author}: ${body}`);
+        contextLogger.info(`  [${i + 1}] ${author}: ${body}`);
       });
 
       // Start the one-minute thought monitor for this issue

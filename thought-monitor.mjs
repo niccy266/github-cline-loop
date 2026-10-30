@@ -8,7 +8,7 @@ import { logger } from "./logger.mjs";
 const MAX_THOUGHT_LINES = 20;
 
 /** Interval (ms) at which the status line is printed while an agent runs. */
-const STATUS_INTERVAL_MS = 60_000;
+const STATUS_INTERVAL_MS = 10_000;
 
 let thoughtBuffer = [];
 let timerId = null;
@@ -118,13 +118,17 @@ export function startMonitoring(context) {
 
   if (timerId) clearInterval(timerId);
 
+  // Print initial status immediately on startup so the operator sees it
+  printStatus();
+
+  // Print every 10 seconds for more responsive status updates
   timerId = setInterval(() => {
     printStatus();
   }, STATUS_INTERVAL_MS);
 
   logger.info(
-    { issueNumber: context?.issueNumber, repo: context?.repo },
-    "Thought monitor started (1-minute status polling)"
+    { issueNumber: context?.issueNumber },
+    "Thought monitor started (10-second status polling)"
   );
 }
 
@@ -153,7 +157,6 @@ function printStatus() {
     logger.info(
       {
         issueNumber: activeContext.issueNumber,
-        repo: activeContext.repo,
         trace: "heartbeat",
       },
       `Status: ${line}`
@@ -167,7 +170,6 @@ function printStatus() {
     logger.error(
       {
         issueNumber: activeContext.issueNumber,
-        repo: activeContext.repo,
         trace: "error-block",
       },
       `Error block detected:\n${text}`

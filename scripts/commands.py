@@ -2,6 +2,7 @@
 import sys, os, subprocess, json
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from get_release import get_release
 
 BASE_DIR = Path(__file__).parent.parent
 OUTPUT_DIR = Path(__file__).parent
@@ -62,6 +63,7 @@ def show_usage():
     print("  list                List items")
     print("  agent-issues        List issues and which agent (workspace) is working on them")
     print("  clear-assignees     Clear assignees and agent claim labels from an issue")
+    print("  release             Get latest release from GitHub and install it")
     print("  help                Show this help message")
     return 0
 
@@ -461,7 +463,8 @@ def list_cmd(args):
     print("  issues              - List open GitHub issues")
     print("  sessions            - List saved Cline sessions")
     print("  prs                 - View PRs created by loop")
-    print("  agent-issues        - List issues and which agent is working on them")
+    print("  agent-issues        - List issues and which agent (workspace) is working on them")
+    print("  release             - Get latest release from GitHub")
     return 0
 
 
@@ -513,6 +516,7 @@ def get_command(name):
         "list": list_cmd,
         "clear-assignees": clear_assignees,
         "agent-issues": agent_issues,
+        "release": get_release,
     }
     return COMMANDS.get(name)
 
@@ -537,6 +541,7 @@ def show_help():
     print("  list                List items")
     print("  agent-issues        List issues and which agent (workspace) is working on them")
     print("  clear-assignees     Clear assignees and agent claim labels from an issue")
+    print("  release             Get latest release from GitHub and install it")
     print("  help                Show this help message")
     return 0
 

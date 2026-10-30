@@ -138,28 +138,47 @@ The repository is cloned to your current working directory. Issue title and desc
           enableAgentTeams: false,
           ephemeral: false,
           onEvent: (event) => {
-            if (event.type === "message" || event.type === "assistant-message") {
-              if (event.text) {
-                addThought(event.text);
-                taskLogger.info({ trace: "thought" }, `Agent: ${event.text.trim()}`);
+            // Handle raw stream chunks from the agent (real-time thought streaming)
+            if (event.type === "chunk") {
+              if (event.payload.stream === "agent" && event.payload.chunk) {
+                addThought(event.payload.chunk);
+                taskLogger.info(
+                  { trace: "thought" },
+                  `Agent: ${event.payload.chunk.trim()}`
+                );
               }
-            } else if (event.type === "tool-call") {
-              taskLogger.info(
-                { trace: "tool", tool: event.name, args: event.args },
-                `Executing tool: ${event.name}`
-              );
-            } else if (event.type === "tool-result") {
-              if (event.isError) {
-                const errText =
-                  typeof event.output === "string"
-                    ? event.output
-                    : JSON.stringify(event.output ?? "");
-                addErrorBlock(`Error: ${errText}`);
+            }
+            // Handle structured agent events for tool calls and other events
+            else if (event.type === "agent_event") {
+              const agentEvent = event.payload.event;
+              // Handle tool calls
+              if (agentEvent.type === "content_start" && agentEvent.contentType === "tool") {
+                taskLogger.info(
+                  { trace: "tool", tool: agentEvent.toolName, args: agentEvent.input },
+                  `Executing tool: ${agentEvent.toolName}`
+                );
               }
-              taskLogger.debug(
-                { trace: "tool-result", tool: event.name, isError: event.isError },
-                `Tool finished: ${event.name}`
-              );
+            }
+            // Handle hook events for tool calls and results
+            else if (event.type === "hook") {
+              if (event.payload.hookEventName === "tool_call") {
+                taskLogger.info(
+                  { trace: "tool", tool: event.payload.toolName, args: event.payload },
+                  `Executing tool: ${event.payload.toolName}`
+                );
+              } else if (event.payload.hookEventName === "tool_result") {
+                if (event.payload.isError) {
+                  const errText =
+                    typeof event.payload.output === "string"
+                      ? event.payload.output
+                      : JSON.stringify(event.payload.output ?? "");
+                  addErrorBlock(`Error: ${errText}`);
+                }
+                taskLogger.debug(
+                  { trace: "tool-result", tool: event.payload.toolName, isError: event.payload.isError },
+                  `Tool finished: ${event.payload.toolName}`
+                );
+              }
             }
           },
         },

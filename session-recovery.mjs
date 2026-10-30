@@ -187,8 +187,14 @@ export function trimMessages(messages, maxMessages = MAX_RESTORE_MESSAGES) {
  */
 export function releaseStaleClaim(repo, issueNumber) {
   try {
+    const recoveryId = `recovery-${Date.now()}`;
     execSync(
       `gh issue edit ${issueNumber} --repo ${repo} --remove-assignee "*" --remove-label "cline-in-progress"`,
+      { stdio: "ignore" }
+    );
+    // Post agent recovery comment
+    execSync(
+      `gh issue comment ${issueNumber} --repo ${repo} --body "//agent-${recoveryId} session recovery released issue #${issueNumber}"`,
       { stdio: "ignore" }
     );
     logger.info(

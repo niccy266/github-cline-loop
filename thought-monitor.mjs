@@ -132,47 +132,75 @@ export function startMonitoring(context) {
   );
 }
 
-/** Stops the status timer and resets state. */
-export function stopMonitoring() {
-  if (timerId) {
-    clearInterval(timerId);
-    timerId = null;
-  }
-  activeContext = null;
-  clearThoughts();
-}
-
 /**
- * Called every minute: prints the last thought with ellipsis, and
- * if the last entry is an error block, prints the entire block.
- */
-function printStatus() {
-  if (!activeContext) return;
+  * Called every 10 seconds: prints the last thought with proper formatting,
+  * or the full error block if detected.
+  *
+  * Window for error detection is 20 lines (MAX_THOUGHT_LINES).
+  * Error trace is printed in full if:
+  *   - The last non-blank entry is an "error" type
+  *   - There are NO non-error thoughts AFTER the error (within the window)
+  * If there is normal output after the error, just print the last line as normal.
+  */
+ function printStatus() {
+   if (!activeContext) return;
 
-  const last = getLastNonBlankThought();
+   const nonBlank = thoughtBuffer
+     .filter((t) => t.text && t.text.trim())
+     .slice(-MAX_THOUGHT_LINES);
 
-  // Print the latest thought (even if it's an error block)
-  if (last) {
-    const line = formatThoughtLine(last.text);
-    logger.info(
-      {
-        issueNumber: activeContext.issueNumber,
-        trace: "heartbeat",
-      },
-      `Status: ${line}`
-    );
-  }
+   if (nonBlank.length === 0) {
+     // No thoughts yet
+     logger.info(
+       {
+         issueNumber: activeContext.issueNumber,
+         trace: "heartbeat",
+       },
+       `Agent working on issue #${activeContext.issueNumber} (no thoughts yet)`
+     );
+     return;
+   }
 
-  // Check for error blocks — if the last line is part of an error block,
-  // print the entire block so the operator can see what went wrong.
-  const { isError, text } = checkForErrorBlock();
-  if (isError && text) {
-    logger.error(
-      {
-        issueNumber: activeContext.issueNumber,
-        trace: "error-block",
-      },
-      `Error block detected:\n${text}`
-    );
-  }
-}
+   const last = nonBlank[nonBlank.length - 1];
+
+   // Check if the last entry is an error block
+   if (last.type === "error") {
+     // Check if there are any non-error thoughts after this error
+     // (search backwards from the end, excluding the error itself)
+     const entriesBeforeError = nonBlank.slice(0, -1);
+     const hasThoughtsAfterError = entriesBeforeError.some(t => t.type !== "error");
+
+     if (!hasThoughtsAfterError) {
+       // No thoughts after error - print the full error block
+       logger.error(
+         {
+           issueNumber: activeContext.issueNumber,
+           trace: "error-block",
+         },
+         `Error block detected:\n${last.text}`
+       );
+     } else {
+       // There are thoughts after the error - just print the last line normally
+       const line = formatThoughtLine(last.text);
+       logger.info(
+         {
+           issueNumber: activeContext.issueNumber,
+           trace: "heartbeat",
+         },
+         `Status: ${line}`
+       );
+     }
+   } else {
+     // Last entry is not an error - print the formatted last line
+     const line = formatThoughtLine(last.text);
+     logger.info(
+       {
+         issueNumber: activeContext.issueNumber,
+         trace: "heartbeat",
+       },
+       `Status: ${line}`
+     );
+   }
+ }
+
+ /** Stops the status timer and resets state. */

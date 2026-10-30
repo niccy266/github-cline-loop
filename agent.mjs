@@ -64,10 +64,18 @@ export async function createAgent() {
 export async function runTask(
   cline,
   { prompt, issueNumber, repo, workspaceDir },
-  agentFactory = createAgent
+  agentFactory = createAgent,
+  sessionId
 ) {
   const taskLogger = logger.child({ issueNumber, repo, workspaceDir });
-  taskLogger.info("Spawning agent task in isolated workspace...");
+  if (sessionId) {
+    taskLogger.info(
+      { sessionId, issueNumber, repo },
+      `Spawning agent task for Issue #${issueNumber} [Session: ${sessionId}]`
+    );
+  } else {
+    taskLogger.info("Spawning agent task in isolated workspace...");
+  }
 
   let lastErr = null;
   let currentCline = cline;

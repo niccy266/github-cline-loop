@@ -1,6 +1,7 @@
 import { ClineCore } from "@cline/core";
 import { logger } from "./logger.mjs";
 import { addThought, addErrorBlock } from "./thought-monitor.mjs";
+import { execSync } from "node:child_process";
 
 export const MAX_ATTEMPTS = 8;
 export const RETRY_DELAY_MS = 5_000;

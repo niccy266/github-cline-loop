@@ -204,3 +204,12 @@ export function startMonitoring(context) {
  }
 
  /** Stops the status timer and resets state. */
+export function stopMonitoring() {
+  if (timerId) {
+    clearInterval(timerId);
+    timerId = null;
+  }
+  activeContext = null;
+  clearThoughts();
+  logger.info("Thought monitor stopped");
+}

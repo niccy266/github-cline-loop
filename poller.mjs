@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logger } from "./logger.mjs";
 import { runTask, createAgent } from "./agent.mjs";
+import { startMonitoring, stopMonitoring } from "./thought-monitor.mjs";
 
 /**
  * Determines whether an agent task result text indicates success or failure.
@@ -23,6 +24,7 @@ export function isTaskFailed(resultText) {
 export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agentFactory = createAgent) {
   const pollLogger = logger.child({ repo, label });
   pollLogger.info("Polling GitHub for open issues...");
+  pollLogger.info(`Searching for issues on ${repo}...`);
 
   let currentCline = cline;
 
@@ -110,6 +112,43 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       }
       if (!claimed) continue;
 
+      // Fetch issue comments so we can print them before starting the agent
+      let comments = [];
+      try {
+        const info = execSync(`gh issue view ${issue.number} --repo ${repo} --json comments`, {
+          encoding: "utf8",
+        });
+        const parsed = JSON.parse(info || "{}");
+        comments = parsed.comments || [];
+      } catch (e) {
+        pollLogger.warn({ err: e, issueNumber: issue.number }, "could not fetch comments; continuing without them");
+      }
+
+      // Print the initial context block once per issue — this is the
+      // data stub the agent sees at the start of its work. It is not
+      // repeated on every heartbeat log line.
+      pollLogger.info(`Initialising workspace for Issue #${issue.number}`);
+      pollLogger.info(`Workspace created at ${workspaceDir}`);
+      pollLogger.info(`Starting agent for Issue #${issue.number}`);
+      pollLogger.info(
+        { issueNumber: issue.number, title: issue.title, repo, workspaceDir },
+        `Issue #${issue.number}: ${issue.title}`
+      );
+      pollLogger.info(`Description: ${issue.body}`);
+      pollLogger.info(`Comment count: ${comments.length}`);
+      comments.forEach((c, i) => {
+        const author = c.author ? c.author.login : "unknown";
+        const body = c.body || "";
+        pollLogger.info(`  [${i + 1}] ${author}: ${body}`);
+      });
+
+      // Start the one-minute thought monitor for this issue
+      startMonitoring({
+        issueNumber: issue.number,
+        repo,
+        workspaceDir,
+      });
+
       const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;
 
       // 4. Pass the isolated workspaceDir to the task runner
@@ -142,6 +181,8 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
     } catch (err) {
       pollLogger.error({ err, issueNumber: issue.number }, `Failed to process Issue #${issue.number}`);
     } finally {
+      // Stop the one-minute thought monitor for this issue
+      stopMonitoring();
       // Release claim and keep workspace persistent for incremental fixes
       try { execSync(`gh issue edit ${issue.number} --repo ${repo} --remove-label "cline-in-progress"`, { stdio: "ignore" }); } catch (e) { /* label may not exist */ }
       try { execSync(`gh issue edit ${issue.number} --repo ${repo} --remove-assignee "*"`, { stdio: "ignore" }); } catch (e) { /* ignore */ }

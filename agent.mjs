@@ -1,5 +1,6 @@
 import { ClineCore } from "@cline/core";
 import { logger } from "./logger.mjs";
+import { addThought, addErrorBlock } from "./thought-monitor.mjs";
 
 export const MAX_ATTEMPTS = 8;
 export const RETRY_DELAY_MS = 5_000;
@@ -130,6 +131,7 @@ The repository is cloned to your current working directory. Issue title and desc
           onEvent: (event) => {
             if (event.type === "message" || event.type === "assistant-message") {
               if (event.text) {
+                addThought(event.text);
                 taskLogger.info({ trace: "thought" }, `Agent: ${event.text.trim()}`);
               }
             } else if (event.type === "tool-call") {
@@ -138,8 +140,15 @@ The repository is cloned to your current working directory. Issue title and desc
                 `Executing tool: ${event.name}`
               );
             } else if (event.type === "tool-result") {
+              if (event.isError) {
+                const errText =
+                  typeof event.output === "string"
+                    ? event.output
+                    : JSON.stringify(event.output ?? "");
+                addErrorBlock(`Error: ${errText}`);
+              }
               taskLogger.debug(
-                { trace: "tool-result", tool: event.name },
+                { trace: "tool-result", tool: event.name, isError: event.isError },
                 `Tool finished: ${event.name}`
               );
             }

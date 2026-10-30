@@ -64,5 +64,9 @@ describe("syntax validation", () => {
       files.includes("session-recovery.mjs"),
       "session-recovery.mjs should be found"
     );
+    assert.ok(
+      files.includes("thought-monitor.mjs"),
+      "thought-monitor.mjs should be found"
+    );
   });
 });

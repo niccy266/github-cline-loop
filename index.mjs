@@ -1,6 +1,7 @@
 import { logger } from "./logger.mjs";
 import { createAgent } from "./agent.mjs";
 import { pollGitHubIssues } from "./poller.mjs";
+import { recoverStaleSessions } from "./session-recovery.mjs";
 
 const REPO = "niccy266/musicbee-tagger-mcp";
 const TARGET_LABEL = "cline-todo";
@@ -8,6 +9,17 @@ const POLL_INTERVAL_MS = 60_000;
 
 async function main() {
   logger.info("Starting Autonomous GitHub Loop Service...");
+
+  // On container restart, recover any sessions that were left in a
+  // "running" state — release stale GitHub issue claims so they can be
+  // re-claimed by the polling loop.
+  const recovery = recoverStaleSessions({ repo: REPO });
+  if (recovery.recovered > 0) {
+    logger.info(
+      { recovered: recovery.recovered, cleaned: recovery.cleaned },
+      "Recovered stale sessions from previous run"
+    );
+  }
 
   let cline = await createAgent();
 

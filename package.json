@@ -5,7 +5,7 @@
   "main": "index.mjs",
   "scripts": {
     "test": "node --test tests/",
-    "lint": "node --check index.mjs && node --check agent.mjs && node --check poller.mjs && node --check logger.mjs"
+    "lint": "node --check index.mjs && node --check agent.mjs && node --check poller.mjs && node --check logger.mjs && node --check session-recovery.mjs"
   },
   "dependencies": {
     "@cline/core": "^0.2.0",

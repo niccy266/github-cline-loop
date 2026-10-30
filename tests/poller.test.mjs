@@ -1,6 +1,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
+const { pollGitHubIssues, isTaskFailed } = await import("../poller.mjs");
+
 /**
  * Verify that poller.mjs exports the expected function signature
  * without actually executing it (which would require a GitHub CLI
@@ -18,7 +20,10 @@ describe("poller module export", () => {
 
   test("poller.mjs should not export unexpected named bindings", async () => {
     const mod = await import("../poller.mjs");
-    const expectedExports = new Set(["pollGitHubIssues"]);
+    const expectedExports = new Set([
+      "pollGitHubIssues",
+      "isTaskFailed",
+    ]);
     const actualExports = new Set(Object.keys(mod));
 
     for (const name of actualExports) {
@@ -27,6 +32,40 @@ describe("poller module export", () => {
         `Unexpected export from poller.mjs: ${name}`
       );
     }
+  });
+
+  test("isTaskFailed should be exported as a function", async () => {
+    const { isTaskFailed } = await import("../poller.mjs");
+    assert.equal(typeof isTaskFailed, "function");
+  });
+
+  test("isTaskFailed should return true for empty/null/undefined", () => {
+    assert.equal(isTaskFailed(""), true);
+    assert.equal(isTaskFailed(null), true);
+    assert.equal(isTaskFailed(undefined), true);
+  });
+
+  test("isTaskFailed should return false for normal success results", () => {
+    assert.equal(isTaskFailed("All CI checks are green. PR #86 is open."), false);
+    assert.equal(
+      isTaskFailed("Successfully resolved the issue. Changes committed and pushed."),
+      false
+    );
+  });
+
+  test("isTaskFailed should strip backtick code before detecting errors", () => {
+    // The agent's result may mention Python pytest flags like
+    // `-W error::DeprecationWarning` inside backticks — this is a
+    // configuration flag, not an actual error.
+    const result =
+      "All CI checks are green. PR #86 is open. Enabled `-W error::DeprecationWarning:musicbee_tagger_mcp` flag.";
+    assert.equal(isTaskFailed(result), false);
+  });
+
+  test("isTaskFailed should return true for genuine error mentions", () => {
+    assert.equal(isTaskFailed("I encountered an error while refactoring"), true);
+    assert.equal(isTaskFailed("The task failed due to missing dependencies"), true);
+    assert.equal(isTaskFailed("Unauthorized access to the repository"), true);
   });
 
   test("pollGitHubIssues should accept an optional agentFactory parameter", async () => {

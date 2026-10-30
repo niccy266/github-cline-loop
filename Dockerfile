@@ -30,6 +30,6 @@ RUN git config --global user.email "cline-bot@users.noreply.github.com" \
     && git config --global credential.helper '!gh auth git-credential'
 
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
-COPY --chown=app:app package.json index.mjs agent.mjs poller.mjs logger.mjs ./
+COPY --chown=app:app package.json index.mjs agent.mjs poller.mjs logger.mjs session-recovery.mjs ./
 
 CMD ["node", "index.mjs"]

@@ -60,5 +60,9 @@ describe("syntax validation", () => {
       files.includes("logger.mjs"),
       "logger.mjs should be found"
     );
+    assert.ok(
+      files.includes("session-recovery.mjs"),
+      "session-recovery.mjs should be found"
+    );
   });
 });

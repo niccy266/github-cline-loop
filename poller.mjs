@@ -4,6 +4,22 @@ import path from "node:path";
 import { logger } from "./logger.mjs";
 import { runTask, createAgent } from "./agent.mjs";
 
+/**
+ * Determines whether an agent task result text indicates success or failure.
+ *
+ * Strips backtick-enclosed code snippets (e.g. Python pytest flags like
+ * `-W error::DeprecationWarning`) before matching, to avoid false-positive
+ * error matches when the agent describes configuration flags in its summary.
+ *
+ * @param {string} resultText - The agent's final result text
+ * @returns {boolean} True if the result indicates failure
+ */
+export function isTaskFailed(resultText) {
+  if (!resultText || typeof resultText !== "string") return true;
+  const cleanText = resultText.replace(/`[^`]+`/g, "");
+  return /unauthorized|error|failed/i.test(cleanText);
+}
+
 export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agentFactory = createAgent) {
   const pollLogger = logger.child({ repo, label });
   pollLogger.info("Polling GitHub for open issues...");
@@ -115,9 +131,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       }
 
       const resultText = (taskResult?.text || "").toString();
-      const failed =
-        !resultText ||
-        /unauthorized|error|failed/i.test(resultText);
+      const failed = isTaskFailed(resultText);
 
       if (failed) {
         pollLogger.warn({ issueNumber: issue.number, result: resultText }, "Agent did not report success; keeping label");

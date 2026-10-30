@@ -80,6 +80,9 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       } else {
         // Claim the issue by adding our agent label
         pollLogger.info({ agentLabel, issueNumber: issue.number }, "Claiming issue with agent label, waiting 20s for race condition verification...");
+        try {
+          execSync(`gh label create "${agentLabel}" --repo ${repo} --color 0052cc --description "agent claim"`, { stdio: "ignore" });
+        } catch (e) { /* label may already exist */ }
         execSync(`gh issue edit ${issue.number} --repo ${repo} --add-label "${agentLabel}"`, { stdio: "ignore" });
         
         // Wait 20 seconds as requested
@@ -201,7 +204,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
       comments.forEach((c, i) => {
         const author = c.author ? c.author.login : "unknown";
         const body = c.body || "";
-        pollLogger.info(`  [${i + 1}] ${author}: ${body}`);
+        contextLogger.info(`  [${i + 1}] ${author}: ${body}`);
       });
 
       // Start the one-minute thought monitor for this issue
@@ -209,6 +212,7 @@ export async function pollGitHubIssues(cline, repo, label, pollIntervalMs, agent
         issueNumber: issue.number,
         repo,
         workspaceDir,
+        sessionId: agentLabel,
       });
 
       const taskPrompt = `Please resolve GitHub Issue #${issue.number} in ${repo}.\n\nTitle: ${issue.title}\n\nDescription:\n${issue.body}`;

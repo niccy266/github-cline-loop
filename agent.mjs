@@ -132,7 +132,7 @@ Always include a "//agent-bot" prefix in comments so they are easy to find. If y
 6. Never rely on local-only checks as proof of completion.
 7. You may run unrestricted shell scripts/commands inside this container (it is isolated). Use \`bash\` (alias for \`run_commands\`) or \`run_commands\` freely for automation.
 
-The repository is cloned to your current working directory. Issue title and description have been provided. Go!`,
+The repository is ALREADY cloned into your current working directory. Do NOT search for the repository, clone it, or check out git remote URLs; start immediately by exploring and inspecting files in the current working directory. Issue title and description have been provided. Go!`,
           enableTools: true,
           enableSpawnAgent: false,
           enableAgentTeams: false,
@@ -142,9 +142,9 @@ The repository is cloned to your current working directory. Issue title and desc
             if (event.type === "chunk") {
               if (event.payload.stream === "agent" && event.payload.chunk) {
                 addThought(event.payload.chunk);
-                taskLogger.info(
+                taskLogger.agent(
                   { trace: "thought" },
-                  `Agent: ${event.payload.chunk.trim()}`
+                  event.payload.chunk.trim()
                 );
               }
             }
@@ -153,7 +153,7 @@ The repository is cloned to your current working directory. Issue title and desc
               const agentEvent = event.payload.event;
               // Handle tool calls
               if (agentEvent.type === "content_start" && agentEvent.contentType === "tool") {
-                taskLogger.info(
+                taskLogger.agent(
                   { trace: "tool", tool: agentEvent.toolName, args: agentEvent.input },
                   `Executing tool: ${agentEvent.toolName}`
                 );
@@ -162,7 +162,7 @@ The repository is cloned to your current working directory. Issue title and desc
             // Handle hook events for tool calls and results
             else if (event.type === "hook") {
               if (event.payload.hookEventName === "tool_call") {
-                taskLogger.info(
+                taskLogger.agent(
                   { trace: "tool", tool: event.payload.toolName, args: event.payload },
                   `Executing tool: ${event.payload.toolName}`
                 );

@@ -319,3 +319,42 @@ export function recoverStaleSessions({
     skipped,
   };
 }
+// ---------------------------------------------------------------------------
+// Minimal CLI entry point so the host-side wrapper can invoke this module
+// inside the container via `node /app/session-recovery.mjs <command>`.
+// ---------------------------------------------------------------------------
+if (process.argv[1] && process.argv[1].endsWith("session-recovery.mjs")) {
+  const sessionsDir = resolveSessionsDir();
+  const cmd = process.argv[2] || "list";
+  try {
+    if (!fs.existsSync(sessionsDir)) {
+      console.log("No sessions found.");
+      process.exit(0);
+    }
+    const entries = fs
+      .readdirSync(sessionsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort()
+      .reverse();
+    if (cmd === "latest") {
+      if (entries.length === 0) {
+        console.log("No sessions found.");
+        process.exit(1);
+      }
+      console.log(entries[0]);
+      process.exit(0);
+    }
+    // default: list last 5
+    const last5 = entries.slice(0, 5);
+    if (last5.length === 0) {
+      console.log("No sessions found.");
+    } else {
+      for (const s of last5) console.log(s);
+    }
+    process.exit(0);
+  } catch (e) {
+    console.error(e?.message || e);
+    process.exit(1);
+  }
+}

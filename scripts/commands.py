@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import sys, os, subprocess, json
+import sys, os, subprocess, json, time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from get_release import get_release
+from quick_update import quick_update
 
 BASE_DIR = Path(__file__).parent.parent
 OUTPUT_DIR = Path(__file__).parent
@@ -42,6 +43,18 @@ def get_workspace_dir():
     return BASE_DIR / ".workspaces"
 
 def get_docker_compose_file():
+    candidates = [
+        BASE_DIR,
+        Path.cwd(),
+        Path("K:/dev/vibe-coding/github-cline-loop"),
+    ]
+    for d in candidates:
+        compose = d / "docker-compose.yml"
+        dockerfile = d / "Dockerfile"
+        package = d / "package.json"
+        if compose.exists() and dockerfile.exists() and package.exists():
+            return compose
+    # Fall back to BASE_DIR
     return BASE_DIR / "docker-compose.yml"
 
 def show_usage():
@@ -64,45 +77,77 @@ def show_usage():
     print("  agent-issues        List issues and which agent (workspace) is working on them")
     print("  clear-assignees     Clear assignees and agent claim labels from an issue")
     print("  release             Get latest release from GitHub and install it")
+    print("  quick-update        Quick copy of build files to tool folder")
     print("  help                Show this help message")
     return 0
 
-def watch_latest(args):
-    """Load the latest Cline session for interactive work."""
-    print("Loading latest Cline session...")
+def stream_thoughts(session_id=None):
+    """Stream new agent 'thinking' blocks from a session's messages.json."""
+    base = Path.home() / ".cline-docker" / "data" / "sessions"
     try:
-        # Use absolute path to session-recovery.mjs
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        recovery_path = os.path.join(script_dir, "..", "session-recovery.mjs")
-        result = run_cmd(["node", recovery_path, "latest"], check=False)
-        if result.returncode == 0:
-            print("Latest session loaded successfully.")
-        else:
-            print("No sessions found or error loading latest session.")
+        base.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    if session_id is None:
+        try:
+            dirs = sorted([d for d in base.iterdir() if d.is_dir()], key=lambda p: p.name)
+        except FileNotFoundError:
+            dirs = []
+        if not dirs:
+            print("No sessions found.", file=sys.stderr)
+            return 1
+        session_dir = dirs[-1]
+        session_id = session_dir.name
+    else:
+        session_dir = base / session_id
+    msg_file = session_dir / f"{session_id}.messages.json"
+    print(f"Watching session {session_id} (Ctrl+C to stop)\n", flush=True)
+    seen = set()
+    first = True
+    try:
+        while True:
+            try:
+                if msg_file.exists():
+                    data = json.loads(msg_file.read_text(encoding="utf-8"))
+                    for m in data.get("messages", []):
+                        for c in m.get("content", []) or []:
+                            if c.get("type") == "thinking":
+                                txt = c.get("thinking", "")
+                                if txt and txt not in seen:
+                                    if not first:
+                                        print(f"\n[thinking] {txt}\n", flush=True)
+                                    seen.add(txt)
+            except Exception:
+                pass
+            first = False
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print("\nStopped watching.")
         return 0
-    except Exception as e:
-        print(f"Failed to load latest session: {e}", file=sys.stderr)
-        return 1
+
+
+def watch_latest(args):
+    """Stream thoughts from the latest Cline session."""
+    print("Loading latest Cline session...")
+    return stream_thoughts(None)
+
 
 def watch(args):
-    """Select from the last 5 Cline sessions for interactive work."""
+    """Stream thoughts from a session, or list recent sessions."""
     if args and args[0] in ("latest",):
         return watch_latest(args[1:])
-    
+    if args and not str(args[0]).startswith("-"):
+        return stream_thoughts(args[0])
     print("Available Cline sessions (last 5):")
+    base = Path.home() / ".cline-docker" / "data" / "sessions"
     try:
-        # Use absolute path to session-recovery.mjs
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        recovery_path = os.path.join(script_dir, "..", "session-recovery.mjs")
-        result = run_cmd(["node", recovery_path, "list"], check=False)
-        if result.returncode == 0:
-            print(result.stdout)
-        else:
-            print("No sessions found.")
-        return 0
-    except Exception as e:
-        print(f"Failed to list sessions: {e}", file=sys.stderr)
-        return 1
+        dirs = sorted([d.name for d in base.iterdir() if d.is_dir()], reverse=True)[:5]
+        for d in dirs:
+            print(d)
+    except FileNotFoundError:
+        print("No sessions found.")
+    return 0
+
 
 def show_logs(args):
     """Show live Docker container logs."""
@@ -126,7 +171,7 @@ def list_issues(args):
     
     print(f"Open issues in {repo} with 'cline-todo' label:")
     try:
-        result = run_cmd(["gh", "issue", "list", "--repo", repo, "--state", "open", "--label", "cline-todo", "--json", "number,title,assignees", "--jq", '.[] | "#\(.number) | \(.title) | assignees: \(.assignees | map(.login) | join(", "))"'], check=False)
+        result = run_cmd(["gh", "issue", "list", "--repo", repo, "--state", "open", "--label", "cline-todo", "--json", "number,title,assignees", "--jq", r'.[] | "#\(.number) | \(.title) | assignees: \(.assignees | map(.login) | join(", "))"'], check=False)
         if result.returncode == 0 and result.stdout.strip():
             print(result.stdout)
         else:
@@ -346,10 +391,8 @@ def list_sessions(args):
 
     print("Listing saved Cline sessions...")
     try:
-        # Use absolute path to session-recovery.mjs
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        recovery_path = os.path.join(script_dir, "..", "session-recovery.mjs")
-        result = run_cmd(["node", recovery_path, "list"], check=False)
+        # Run session-recovery.mjs inside the Docker container
+        result = run_cmd(["docker", "exec", "cline-autonomous-loop", "node", "/app/session-recovery.mjs", "list"], check=False)
         if result.returncode == 0:
             print(result.stdout)
         else:
@@ -458,6 +501,14 @@ def info(args):
 
 def list_cmd(args):
     """List items."""
+    if args and args[0] == "sessions":
+        return list_sessions(args[1:])
+    if args and args[0] == "issues":
+        return list_issues(args[1:])
+    if args and args[0] == "prs":
+        return show_prs(args[1:])
+    if args and args[0] == "agent-issues":
+        return agent_issues(args[1:])
     print("=== List Items ===")
     print("Available items:")
     print("  issues              - List open GitHub issues")
@@ -517,6 +568,7 @@ def get_command(name):
         "clear-assignees": clear_assignees,
         "agent-issues": agent_issues,
         "release": get_release,
+        "quick-update": quick_update,
     }
     return COMMANDS.get(name)
 

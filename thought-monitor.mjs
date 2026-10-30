@@ -1,5 +1,16 @@
 import { logger } from "./logger.mjs";
+import fs from "node:fs";
+import path from "node:path";
 
+function resolveSessionsDir() {
+  const envDir = process.env.CLINE_SESSION_DATA_DIR || process.env.CLINE_DATA_DIR || process.env.CLINE_DIR;
+  if (envDir) return path.join(envDir, "data", "sessions");
+  const home = process.env.HOME || "/home/app";
+  return path.join(home, ".cline", "data", "sessions");
+}
+
+let activeSessionId = null;
+let seenThoughts = new Set();
 /**
  * Maximum number of thought lines to retain in the in-memory buffer.
  * Every minute the monitor prints the last thought; this limit bounds
@@ -114,22 +125,59 @@ export function checkForErrorBlock() {
  */
 export function startMonitoring(context) {
   activeContext = context;
+  activeSessionId = null;
   clearThoughts();
+  seenThoughts = new Set();
 
   if (timerId) clearInterval(timerId);
 
-  // Print initial status immediately on startup so the operator sees it
-  printStatus();
+  // Seed seen set with existing thoughts
+  pollSessionFile(true);
 
-  // Print every 10 seconds for more responsive status updates
+  // Print every 10 seconds
   timerId = setInterval(() => {
-    printStatus();
+    pollSessionFile(false);
   }, STATUS_INTERVAL_MS);
 
-  logger.info(
-    { issueNumber: context?.issueNumber },
-    "Thought monitor started (10-second status polling)"
-  );
+  logger.info("Thought monitor started (10-second status polling)");
+}
+
+function pollSessionFile(seedOnly = false) {
+  if (!activeContext) return;
+  // resolve session dir
+  let sessionId = activeSessionId;
+  const base = resolveSessionsDir();
+  if (!sessionId) {
+    try {
+      const dirs = fs.readdirSync(base).filter((d) => {
+        try { return fs.statSync(path.join(base, d)).isDirectory(); } catch { return false; }
+      }).sort();
+      if (dirs.length) sessionId = dirs[dirs.length - 1];
+    } catch {}
+  }
+  if (!sessionId) return;
+  const msgFile = path.join(base, sessionId, `${sessionId}.messages.json`);
+  try {
+    if (!fs.existsSync(msgFile)) return;
+    const data = JSON.parse(fs.readFileSync(msgFile, "utf8"));
+    let latest = null;
+    for (const m of data.messages || []) {
+      for (const c of m.content || []) {
+        if (c.type === "thinking" && c.thinking) {
+          if (!seenThoughts.has(c.thinking)) {
+            seenThoughts.add(c.thinking);
+            if (!seedOnly) {
+              logger.agent(c.thinking.trim() + (c.thinking.trim().endsWith(".") ? "" : "..."));
+            }
+          }
+          latest = c.thinking;
+        }
+      }
+    }
+    if (!seedOnly && seenThoughts.size === 0) {
+      logger.agent(`Agent working on issue #${activeContext.issueNumber} (no thoughts yet)`);
+    }
+  } catch {}
 }
 
 /**
@@ -151,13 +199,7 @@ export function startMonitoring(context) {
 
    if (nonBlank.length === 0) {
      // No thoughts yet
-     logger.info(
-       {
-         issueNumber: activeContext.issueNumber,
-         trace: "heartbeat",
-       },
-       `Agent working on issue #${activeContext.issueNumber} (no thoughts yet)`
-     );
+     logger.agent(`Agent working on issue #${activeContext.issueNumber} (no thoughts yet)`);
      return;
    }
 
@@ -172,34 +214,16 @@ export function startMonitoring(context) {
 
      if (!hasThoughtsAfterError) {
        // No thoughts after error - print the full error block
-       logger.error(
-         {
-           issueNumber: activeContext.issueNumber,
-           trace: "error-block",
-         },
-         `Error block detected:\n${last.text}`
-       );
+       logger.error(`Error block detected:\n${last.text}`);
      } else {
        // There are thoughts after the error - just print the last line normally
        const line = formatThoughtLine(last.text);
-       logger.info(
-         {
-           issueNumber: activeContext.issueNumber,
-           trace: "heartbeat",
-         },
-         `Status: ${line}`
-       );
+       logger.agent(line);
      }
    } else {
      // Last entry is not an error - print the formatted last line
      const line = formatThoughtLine(last.text);
-     logger.info(
-       {
-         issueNumber: activeContext.issueNumber,
-         trace: "heartbeat",
-       },
-       `Status: ${line}`
-     );
+     logger.agent(line);
    }
  }
 

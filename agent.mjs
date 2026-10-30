@@ -121,7 +121,7 @@ Always include a "//agent-bot" prefix in comments so they are easy to find. If y
 4. Always open a Pull Request for your branch and report the PR number in your final message.
 5. If CI verification fails, fix and re-push until green.
 6. Never rely on local-only checks as proof of completion.
-7. You may run unrestricted shell scripts/commands inside this container (it is isolated); use bash freely for automation.
+7. You may run unrestricted shell scripts/commands inside this container (it is isolated). Use \`bash\` (alias for \`run_commands\`) or \`run_commands\` freely for automation.
 
 The repository is cloned to your current working directory. Issue title and description have been provided. Go!`,
           enableTools: true,
